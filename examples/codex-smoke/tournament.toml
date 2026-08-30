@@ -1,0 +1,43 @@
+version = 1
+
+[project]
+repo = "repo"
+ref = "HEAD"
+
+[[sources]]
+kind = "issue"
+path = "issue.md"
+visible = true
+
+[candidates]
+adapter = "codex"
+count = 3
+concurrency = 3
+timeout_seconds = 600
+reasoning_effort = "high"
+
+[[checks]]
+id = "existing-tests"
+kind = "existing"
+command = ["python3", "-m", "unittest", "test_existing.py"]
+baseline = "pass"
+timeout_seconds = 60
+
+[[checks]]
+id = "bug-reproduction"
+kind = "approved-hidden"
+command = ["python3", "-m", "unittest", "test_regression.py"]
+baseline = "fail"
+timeout_seconds = 60
+
+[[overlays]]
+kind = "approved-hidden"
+source = "private/test_regression.py"
+destination = "test_regression.py"
+
+[selection]
+test_globs = ["test_*.py", "tests/**"]
+
+[safety]
+report_only = true
+protected_paths = ["pyproject.toml", "requirements.txt"]

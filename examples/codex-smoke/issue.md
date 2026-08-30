@@ -1,0 +1,1 @@
+Fix `clamp(value, lower, upper)` so values below the lower bound return the lower bound, values above the upper bound return the upper bound, and in-range values are unchanged. Preserve the public function signature, add no dependency, and keep the patch focused.

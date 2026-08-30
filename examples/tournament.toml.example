@@ -1,0 +1,39 @@
+version = 1
+
+[project]
+repo = "/absolute/path/to/your/repository"
+ref = "HEAD"
+
+[[sources]]
+kind = "issue"
+path = "/absolute/path/to/issue.md"
+visible = true
+
+[candidates]
+adapter = "codex"
+count = 3
+concurrency = 3
+timeout_seconds = 900
+model = "gpt-5.4"
+reasoning_effort = "high"
+
+[[checks]]
+id = "existing-tests"
+kind = "existing"
+command = ["python3", "-m", "unittest"]
+baseline = "pass"
+timeout_seconds = 300
+
+[[checks]]
+id = "bug-reproduction"
+kind = "reproduction"
+command = ["python3", "-m", "unittest", "tests.test_regression"]
+baseline = "fail"
+timeout_seconds = 300
+
+[selection]
+test_globs = ["tests/**", "**/*_test.py", "**/*.test.ts"]
+
+[safety]
+report_only = true
+protected_paths = ["pyproject.toml", "package.json", "Cargo.toml"]
