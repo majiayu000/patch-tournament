@@ -12,7 +12,23 @@ task-start snapshot -> one coding agent -> project tests -> task-diff facts
 ```
 
 This design and the J-Space failure pattern that motivated it are documented in
-[`DESIGN.md`](DESIGN.md).
+[`DESIGN.md`](https://github.com/majiayu000/patch-tournament/blob/main/DESIGN.md).
+
+## Install
+
+Patch Tournament requires Python 3.11+ and Git. Install the CLI in an isolated tool
+environment with `uv` or `pipx`:
+
+```bash
+uv tool install patch-tournament
+# or: pipx install patch-tournament
+```
+
+Verify the installation:
+
+```bash
+patch-tournament --version
+```
 
 ## Agent workflow
 
@@ -70,22 +86,23 @@ already dirty.
 If no task-start snapshot exists, do not create one after implementation and claim that it
 proves scope. The attribution evidence no longer exists.
 
-## Install for Codex
+## Install the Codex skill
 
-Requirements are Python 3.11+ and Git.
+The PyPI package installs the CLI. To let Codex automatically follow the snapshot/guard
+workflow, also install the repository's `patch-guard` skill:
 
 ```bash
-git clone https://github.com/majiayu000/patch-tournament.git
+git clone --depth 1 https://github.com/majiayu000/patch-tournament.git
 cd patch-tournament
-python3 -m pip install -e .
 mkdir -p ~/.codex/skills
 ln -s "$PWD/skills/patch-guard" ~/.codex/skills/patch-guard
 ```
 
-The included [`patch-guard` skill](skills/patch-guard/SKILL.md) is written for an agent, not
-for an end user operating an interactive dashboard. It tells Codex to take the snapshot at
-task start and interpret the final report conservatively. Invoke it with `$patch-guard` when
-you want task-level change attribution.
+The included
+[`patch-guard` skill](https://github.com/majiayu000/patch-tournament/blob/main/skills/patch-guard/SKILL.md)
+is written for an agent, not for an end user operating an interactive dashboard. Start a new
+Codex session after installing it, then invoke `$patch-guard` when you want task-level change
+attribution.
 
 ## Optional tournament mode
 
@@ -103,8 +120,9 @@ candidate. It never auto-applies the winner. Existing, reproduction, and approve
 checks may gate selection; agent-authored speculative checks may not.
 
 Tournament mode spends additional tokens and is never launched automatically by Patch
-Guard. See [`examples/tournament.toml.example`](examples/tournament.toml.example) for its
-configuration.
+Guard. See
+[`examples/tournament.toml.example`](https://github.com/majiayu000/patch-tournament/blob/main/examples/tournament.toml.example)
+for its configuration.
 
 ## Limits and safety
 
