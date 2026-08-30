@@ -1,3 +1,3 @@
-"""Evidence-driven comparison of generated code patches."""
+"""Task-diff facts and evidence-driven comparison of generated patches."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

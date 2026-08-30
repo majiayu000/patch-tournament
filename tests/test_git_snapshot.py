@@ -9,6 +9,26 @@ from tests.helpers import init_repo, run
 
 
 class GitSnapshotTests(unittest.TestCase):
+    def test_snapshot_supports_a_committed_empty_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            source = root / "source"
+            source.mkdir()
+            run(["git", "init", "--quiet"], source)
+            run(["git", "config", "user.name", "Patch Tournament Tests"], source)
+            run(["git", "config", "user.email", "tests@example.invalid"], source)
+            result = run(
+                ["git", "commit", "--allow-empty", "--quiet", "-m", "baseline"],
+                source,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+            snapshot = root / "snapshot"
+            snapshot_head = create_snapshot(source, "HEAD", snapshot)
+
+            self.assertTrue(snapshot_head)
+            self.assertEqual(run(["git", "ls-files"], snapshot).stdout, "")
+
     def test_snapshot_and_diff_include_committed_and_untracked_changes(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)

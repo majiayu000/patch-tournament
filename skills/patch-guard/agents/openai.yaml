@@ -1,0 +1,4 @@
+interface:
+  display_name: "Patch Guard"
+  short_description: "Attribute task changes without judging them"
+  default_prompt: "Use $patch-guard to snapshot this repository before editing and report the exact task-owned diff after verification."
