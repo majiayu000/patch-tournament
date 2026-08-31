@@ -94,6 +94,29 @@ class CodexHookTests(unittest.TestCase):
 
 
 class PluginPackageTests(unittest.TestCase):
+    def test_repository_exposes_plugin_through_marketplace(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        marketplace = json.loads(
+            (root / ".agents" / "plugins" / "marketplace.json").read_text()
+        )
+
+        self.assertEqual(marketplace["name"], "patch-tournament")
+        self.assertEqual(marketplace["interface"]["displayName"], "Patch Tournament")
+        self.assertEqual(
+            marketplace["plugins"],
+            [
+                {
+                    "name": "patch-guard",
+                    "source": {"source": "local", "path": "."},
+                    "policy": {
+                        "installation": "AVAILABLE",
+                        "authentication": "ON_INSTALL",
+                    },
+                    "category": "Developer Tools",
+                }
+            ],
+        )
+
     def test_manifest_and_default_hook_bundle_are_valid_minimal_shape(self) -> None:
         root = Path(__file__).resolve().parents[1]
         manifest = json.loads((root / ".codex-plugin" / "plugin.json").read_text())

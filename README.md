@@ -86,23 +86,19 @@ already dirty.
 If no task-start snapshot exists, do not create one after implementation and claim that it
 proves scope. The attribution evidence no longer exists.
 
-## Install the Codex skill
+## Install the Codex plugin
 
-The PyPI package installs the CLI. To let Codex automatically follow the snapshot/guard
-workflow, also install the repository's `patch-guard` skill:
+The PyPI package installs the CLI. To let Codex record the task baseline and report the
+task-owned diff automatically, install the repository's `patch-guard` plugin:
 
 ```bash
-git clone --depth 1 https://github.com/majiayu000/patch-tournament.git
-cd patch-tournament
-mkdir -p ~/.codex/skills
-ln -s "$PWD/skills/patch-guard" ~/.codex/skills/patch-guard
+codex plugin marketplace add majiayu000/patch-tournament
+codex plugin add patch-guard@patch-tournament
 ```
 
-The included
-[`patch-guard` skill](https://github.com/majiayu000/patch-tournament/blob/main/skills/patch-guard/SKILL.md)
-is written for an agent, not for an end user operating an interactive dashboard. Start a new
-Codex session after installing it, then invoke `$patch-guard` when you want task-level change
-attribution.
+Start a new Codex session after installation. The plugin runs automatically for coding turns;
+you do not need to invoke `$patch-guard`. Do not keep the older manually linked `patch-guard`
+skill enabled at the same time, because that would duplicate the workflow.
 
 ## Optional tournament mode
 
