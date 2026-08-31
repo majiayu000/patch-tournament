@@ -1,0 +1,30 @@
+{
+  "description": "Automatically record and review task-owned Git changes.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"$PLUGIN_ROOT/src\" python3 -m patch_tournament.codex_hook",
+            "timeout": 30,
+            "statusMessage": "Recording task baseline"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"$PLUGIN_ROOT/src\" python3 -m patch_tournament.codex_hook",
+            "timeout": 30,
+            "statusMessage": "Reviewing task changes"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -81,7 +81,10 @@ def create_snapshot(source: Path, ref: str, destination: Path) -> str:
     _git(["config", "user.email", "patch-tournament@example.invalid"], destination)
     _git(["add", "-A"], destination)
     _git(
-        ["commit", "--allow-empty", "--quiet", "-m", "patch-tournament baseline"],
+        [
+            "commit", "--no-gpg-sign", "--allow-empty", "--quiet", "-m",
+            "patch-tournament baseline",
+        ],
         destination,
     )
     head = _git(["rev-parse", "HEAD"], destination).stdout.strip()

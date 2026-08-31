@@ -1,0 +1,23 @@
+{
+  "name": "patch-guard",
+  "version": "0.2.0",
+  "description": "Automatically attribute each Codex turn's Git changes without disturbing pre-existing work.",
+  "author": {
+    "name": "majiayu000",
+    "url": "https://github.com/majiayu000"
+  },
+  "homepage": "https://github.com/majiayu000/patch-tournament",
+  "repository": "https://github.com/majiayu000/patch-tournament",
+  "license": "MIT",
+  "keywords": ["codex", "git", "patch", "guard"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Patch Guard",
+    "shortDescription": "Attribute task-owned Git changes automatically.",
+    "longDescription": "Patch Guard records the Git worktree before a Codex turn uses local tools, then reports the exact task-owned file changes at turn end.",
+    "developerName": "majiayu000",
+    "category": "Developer Tools",
+    "capabilities": ["Automation", "Code review"],
+    "defaultPrompt": "Make this code change and report only the files changed during this task."
+  }
+}
