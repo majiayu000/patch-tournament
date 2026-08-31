@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from patch_tournament.git_snapshot import capture_inspection, create_snapshot
@@ -9,6 +10,22 @@ from tests.helpers import init_repo, run
 
 
 class GitSnapshotTests(unittest.TestCase):
+    def test_snapshot_ignores_inherited_commit_signing(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            source = root / "source"
+            init_repo(source, {"app.py": "VALUE = 1\n"})
+            global_config = root / "gitconfig"
+            global_config.write_text(
+                "[commit]\n\tgpgSign = true\n[gpg]\n\tprogram = /bin/false\n",
+                encoding="utf-8",
+            )
+
+            with patch.dict("os.environ", {"GIT_CONFIG_GLOBAL": str(global_config)}):
+                snapshot_head = create_snapshot(source, "HEAD", root / "snapshot")
+
+            self.assertTrue(snapshot_head)
+
     def test_snapshot_supports_a_committed_empty_tree(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)

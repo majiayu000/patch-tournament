@@ -7,7 +7,7 @@
 
 Patch Tournament 已经从一个“多 Agent 竞赛选最小补丁”的实验，收缩成一个更可靠的默认产品：在任务开始时记录 Git 工作树，任务结束时只报告本次任务实际改了什么。
 
-当前阶段是**已公开、可使用的 0.2 Alpha**。核心实现已经推送，Python 3.11、3.12、3.13 的持续集成已经通过；真实任务验证和正式 release 仍未形成闭环。
+当前阶段是**已公开、可使用的 0.2 Alpha**。核心实现已经推送，Python 3.11、3.12、3.13 的持续集成已经通过；当前工作树另有一个尚未提交的 Codex 插件原型。插件的自动 Guard 已通过真实 Codex 验证，但 Tournament 的真实 Token 测试暴露了候选产物污染问题，正式 release 仍未形成闭环。
 
 ## 这个库在解决什么问题
 
@@ -89,11 +89,11 @@ Patch Tournament 已经从一个“多 Agent 竞赛选最小补丁”的实验�
 
 ### 工程状态
 
-本次 fresh verification 结果：
+本次插件评估后的 fresh verification 结果：
 
 ```text
 PYTHONPATH=src python3 -m unittest discover -v
-Ran 38 tests
+Ran 45 tests
 OK
 ```
 
@@ -106,6 +106,42 @@ OK
 - 仓库已有最小 CI，对 push 和 pull request 运行 Python 3.11、3.12、3.13 测试矩阵。
 - 首次远端 CI 三组全部通过，运行记录为 [GitHub Actions #33322071708](https://github.com/majiayu000/patch-tournament/actions/runs/33322071708)。
 - 当前仍没有 Git tag、GitHub Release 或 Python 包发布闭环。
+
+## Codex 插件完整实测
+
+测试日期为 2026-08-31。测试目标不是证明目录结构正确，而是分别验证 Codex 是否能安装插件、Hook 是否真的介入一次普通任务、任务前脏改动是否会被正确排除，以及 Tournament 是否能用真实 Codex 候选完成生成、隐藏测试和选优。
+
+### 测试方案与结果
+
+| 层级 | 用例 | 验收标准 | 结果 |
+|---|---|---|---|
+| 包结构 | 官方插件校验器和 Skill 校验器 | manifest、默认 Hook 和 Skill 均可被 Codex 识别 | 通过 |
+| Hook 单元测试 | PreToolUse、Stop、并发首次快照、空改动、第二次 Stop、非 Git、错误输入 | 快照幂等；无改动静默；错误明确；不形成 Stop 循环 | 6/6 通过 |
+| 整库回归 | Guard、Tournament、CLI、Git、安全和选择逻辑 | 新插件不能破坏已有能力 | 45/45 通过 |
+| 真实安装 | 一次性本地 Marketplace 安装 `patch-guard@patch-guard-eval` | `codex plugin list` 显示 installed、enabled、版本 0.2.0 | 通过 |
+| Hook 黑盒 | 仓库在任务前已修改 `legacy.py`，新 Codex 会话只允许改 `app.py`，禁止手动调用 Skill/CLI | 自动建立一份快照；只认领 `app.py`；保留 `legacy.py`；结束时输出 Hook Warning 且不产生续轮 | 通过 |
+| Git 配置故障 | 用户全局启用 commit signing，但沙箱不能访问 GPG | 临时比较仓库仍能建立基线 | 首次真实测试失败；增加 `git commit --no-gpg-sign` 后回归通过 |
+| 真实 Tournament | 两个并行 Codex 候选、一个候选不可见的 approved-hidden 测试、report-only 输出 | 两个候选隔离生成；隐藏测试判定资格；选出胜者；不改源仓库 | 主链路通过，产物卫生失败 |
+
+### 自动 Hook 的真实结果
+
+决定性黑盒用例没有调用 `patch-tournament snapshot`、`patch-tournament guard` 或 `$patch-guard`。Codex 只执行普通查看、修改和 diff 命令。插件在数据目录新增了恰好一份任务起点快照，快照记录任务前的 changed files 只有 `legacy.py`；Codex 完成后，Stop Hook 通过 `systemMessage` 输出范围报告，只把 `app.py` 认领为本任务改动。
+
+最后一次无续轮回归使用 47,291 input tokens，其中 37,120 为 cached input，216 output tokens。Token 数包含当前 Codex 会话的全局上下文，不能全部归因于插件。整个任务只有一次 `turn.started` 和一次 `turn.completed`；`systemMessage` 被记录为 Hook Warning，不会作为 continuation prompt 再次调用模型。`codex exec --json` 当前也不会把这条 Warning 作为普通 JSONL 消息输出。
+
+另一次安装测试中，本机已有的同名全局 Skill 也被触发，导致“手动 Skill + 自动 Hook”重复执行。它没有破坏结果，但说明正式安装说明必须收敛入口：安装插件后不应再同时保留旧的手动 Skill 链接。
+
+### 真实 Tournament 的结果
+
+两个 `gpt-5.4` 候选并行运行，分别用了 98,122 和 115,706 input tokens，输出 1,361 和 1,826 tokens。两个候选都修改了 `clamp.py`，都通过了候选不可见的隐藏回归测试，`c01` 被确定性选为胜者；源仓库中的 `clamp.py` 始终保持原样，证明 report-only 和隔离 grader 生效。
+
+但两个候选自测时都生成了未忽略的 `__pycache__/clamp.cpython-314.pyc`。Tournament 把这个二进制缓存收入候选补丁，并把未知二进制行数按惩罚值计成 2,000,000 行，最终每个候选被报告为 2,000,004 行，`winner.patch` 也包含 `.pyc`。因此本次结果只能证明生成、隔离、隐藏测试和选优链路能跑通，不能证明当前 winner artifact 已达到可直接使用的质量。
+
+### 能力结论
+
+Codex 插件可以替代默认 Guard 工作流里的人工 snapshot/guard 命令，用户只需要正常让 Codex 改代码。它不能、也不应该在每次任务中自动替代 Tournament：Tournament 会启动额外模型、消耗更多 Token，并要求用户提供可见需求、独立检查和输出目录。
+
+所以准确结论是：**插件已经覆盖这个库最重要的默认能力，但没有把整个库变成一个自动、无配置、全能力入口。** 显式 Tournament 仍是库的独立高级能力，而且在修复生成型垃圾文件污染前不应作为可靠发布能力宣传。
 
 ## 完成度判断
 
@@ -125,7 +161,11 @@ OK
 
 ### 现在必须做
 
-1. **用真实任务验证 Patch Guard，而不是继续增加规则**
+1. **修复 Tournament 的候选产物污染**
+
+   至少要让 Python 自测生成的 `__pycache__`、`.pyc` 不进入候选补丁和规模排序，并增加一个真实工作区回归用例。这个修复应建立在 Git/项目已有 ignore 事实和明确的临时产物边界上，不能扩成通用文件名语义规则引擎。
+
+2. **用真实任务继续验证 Patch Guard，而不是继续增加规则**
 
    选择 5 到 10 个不同类型的实际任务，在任务开始前自动记录快照，结束后保存 Guard JSON，并记录：
 
@@ -137,9 +177,9 @@ OK
 
    在这些数据出来之前，不应再加入 profile、阈值、语言分类表或自动重试。
 
-2. **完成验证后的发布决策**
+3. **收敛 Codex 安装入口并完成发布决策**
 
-   当前 0.2 和 CI 已经公开，但还不应仅凭单元测试创建稳定版承诺。积累真实任务数据后，再决定是只创建 Alpha tag/GitHub Release，还是同时发布 Python 包。
+   插件安装后不要再保留同名的全局手动 Skill，否则同一任务会重复快照和复核。当前 0.2 和 CI 已经公开，但还不应仅凭单元测试创建稳定版承诺。修复 Tournament 产物污染并积累真实任务数据后，再决定是只创建 Alpha tag/GitHub Release，还是同时发布 Python 包和插件。
 
 ### 有证据后再决定
 
