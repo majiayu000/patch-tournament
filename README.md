@@ -32,9 +32,14 @@ Verify the installation:
 patch-tournament --version
 ```
 
+Version `0.3.0a1` is also available as a wheel and source distribution on
+[GitHub Releases](https://github.com/majiayu000/patch-tournament/releases/tag/v0.3.0a1).
+PyPI publication is currently blocked on Trusted Publisher configuration; do not use the
+bare PyPI package name until that is resolved.
+
 ## Three-agent workflow
 
-Start from the provided configuration:
+From a repository checkout, start from the provided configuration:
 
 ```bash
 cp examples/tournament.toml.example tournament.toml

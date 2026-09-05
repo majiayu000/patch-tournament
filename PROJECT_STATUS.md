@@ -7,13 +7,17 @@
 
 Patch Tournament 已恢复“三个隔离 Agent 竞赛、独立验证、选择最小合格补丁”为主工作流；事实型 Patch Guard 保留为低成本的任务级改动归因工具。
 
-当前准备发布 **0.3.0a1 Alpha**。本次处理修复了五类已复现的问题：零有效验收门槛仍产生胜者、候选修改验收测试、文件重命名导致统计中断、Git export 属性破坏任务起点、Python 导入缓存污染胜者补丁。
+**0.3.0a1 Alpha 已发布到 GitHub Release**，发布提交为 `9e539221dd2bc95f99eb39adc2348eebfa5482a9`。本次处理修复了五类已复现的问题：零有效验收门槛仍产生胜者、候选修改验收测试、文件重命名导致统计中断、Git export 属性破坏任务起点、Python 导入缓存污染胜者补丁。
 
 每项 gating check 现在必须声明 `evidence_paths`，列出验收脚本、fixture、helper 和配置文件。缺失文件在生成前报错；候选修改声明的文件或替换其父路径会失去资格。隐藏文件仍由 overlay 提供。调用方负责声明完整验收输入，工具不推断依赖，也不把可执行候选代码当作安全沙箱。
 
 Git 快照改为读取原始提交 blob，保留 export-ignore/export-subst 文件、二进制、执行权限及仓库内软链接；明确拒绝 submodule 和越界链接。重命名按删除加新增统一统计。
 
 安装说明已改为可验证的 Git 源码安装路径；PyPI 发布状态以发布工作流及包索引的实际结果为准。版本仍为 Alpha，不承诺已经证明降低过度设计或具备自动 PR 生命周期管理能力。
+
+[远端 CI #33935340849](https://github.com/majiayu000/patch-tournament/actions/runs/33935340849) 的 Python 三版本测试和 wheel 安装均通过。[GitHub Release](https://github.com/majiayu000/patch-tournament/releases/tag/v0.3.0a1) 已附上由发布工作流构建的源码包和 wheel；从远端提交安装、从 Release 下载 wheel 安装均已验证。
+
+[PyPI 上传 #33935399282](https://github.com/majiayu000/patch-tournament/actions/runs/33935399282) 在身份交换阶段返回 `invalid-publisher`，构建和测试已通过。PyPI 未匹配到 Trusted Publisher，需要账户所有者在 [Publishing](https://pypi.org/manage/account/publishing/) 登记或核对以下配置：项目 `patch-tournament`、GitHub owner `majiayu000`、repository `patch-tournament`、workflow `publish.yml`、environment `pypi`。首次发布使用 pending publisher；参见 [PyPI 官方说明](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/)。配置完成后可执行 `gh run rerun 33935399282 --repo majiayu000/patch-tournament --failed`。当前不声称 PyPI 发布成功。
 
 本次 fresh verification：Python 3.11、3.12、3.13、3.14 分别通过 54 项测试；源码包和 wheel 构建成功，wheel 在独立环境安装后 CLI 返回 `0.3.0a1`。新增回归覆盖验收篡改、零门禁、缺失验收文件、父目录软链接、重命名、export 属性、二进制和执行权限。
 
