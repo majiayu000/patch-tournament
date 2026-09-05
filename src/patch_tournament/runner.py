@@ -90,6 +90,11 @@ def _verify_baseline(config: TournamentConfig, temp_root: Path) -> None:
     workspace = temp_root / "baseline"
     create_snapshot(config.project.repo, config.project.ref, workspace)
     _copy_overlays(config, workspace)
+    for check in config.checks:
+        for path in check.evidence_paths:
+            evidence = workspace / path
+            if not evidence.is_file() or evidence.resolve() != workspace.resolve() / path:
+                raise TournamentError(f"check {check.id}: evidence must be a regular file without symlink parents: {path}")
     executions = _run_checks(config, workspace)
     mismatches = [
         f"{check.id}: expected {check.baseline}, got {execution.result.status}"
@@ -118,6 +123,7 @@ def _run_candidate(
         "PATCH_TOURNAMENT_CANDIDATE_ID": candidate_id,
         "PATCH_TOURNAMENT_PROMPT": prompt,
         "PATCH_TOURNAMENT_WORKSPACE": str(workspace),
+        "PYTHONDONTWRITEBYTECODE": "1",
     }
     if config.candidates.adapter == "codex":
         codex_home = temp_root / f"{candidate_id}-codex-home"
@@ -148,7 +154,12 @@ def _run_candidate(
     if not inspection.patch:
         failures.append("empty_patch")
     protected = set(config.safety.protected_paths)
-    touched_protected = sorted(path for path in inspection.changed_files if path in protected)
+    protected.update(path for check in config.checks if check.gating for path in check.evidence_paths)
+    protected.update(str(overlay.destination) for overlay in config.overlays)
+    touched_protected = sorted(
+        path for path in inspection.changed_files
+        if any(boundary == path or boundary.startswith(path + "/") for boundary in protected)
+    )
     failures.extend(f"protected_path:{path}" for path in touched_protected)
 
     checks: tuple[CheckExecution, ...] = ()

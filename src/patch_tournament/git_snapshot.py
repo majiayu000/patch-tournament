@@ -4,7 +4,6 @@ import json
 import os
 import posixpath
 import subprocess
-import tarfile
 import tempfile
 from dataclasses import dataclass, field
 from io import BytesIO
@@ -33,9 +32,11 @@ class WorktreeSnapshot:
 SNAPSHOT_SCHEMA_VERSION = 2
 
 
-def _git(args: list[str], cwd: Path, *, text: bool = True) -> subprocess.CompletedProcess:
+def _git(
+    args: list[str], cwd: Path, *, text: bool = True, input: bytes | None = None
+) -> subprocess.CompletedProcess:
     result = subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=text, check=False
+        ["git", *args], cwd=cwd, capture_output=True, text=text, input=input, check=False
     )
     if result.returncode != 0:
         stderr = result.stderr if text else result.stderr.decode("utf-8", errors="replace")
@@ -48,38 +49,44 @@ def create_snapshot(source: Path, ref: str, destination: Path) -> str:
     if destination.exists():
         raise FileExistsError(f"snapshot destination already exists: {destination}")
     destination.mkdir(parents=True)
-    tree_paths = _git(["ls-tree", "-r", "--name-only", "-z", ref], source).stdout
-    if tree_paths:
-        archive = _git(["archive", "--format=tar", ref], source, text=False).stdout
-        try:
-            with tarfile.open(fileobj=BytesIO(archive), mode="r:") as bundle:
-                for member in bundle.getmembers():
-                    name = PurePosixPath(member.name)
-                    if (
-                        name.is_absolute()
-                        or ".." in name.parts
-                        or member.isdev()
-                        or member.isfifo()
-                    ):
-                        raise RuntimeError(f"unsafe path in git archive: {member.name}")
-                    if member.issym() or member.islnk():
-                        target = PurePosixPath(member.linkname)
-                        resolved_link = posixpath.normpath(str(name.parent / target))
-                        if (
-                            target.is_absolute()
-                            or resolved_link == ".."
-                            or resolved_link.startswith("../")
-                        ):
-                            raise RuntimeError(
-                                f"archive link escapes snapshot: {member.name}"
-                            )
-                bundle.extractall(destination)
-        except tarfile.TarError as error:
-            raise RuntimeError(f"invalid Git archive for {ref}: {error}") from error
+    entries = []
+    for record in _git(["ls-tree", "-r", "-z", ref], source).stdout.split("\0"):
+        if not record:
+            continue
+        metadata, path = record.split("\t", 1)
+        mode, kind, object_id = metadata.split()
+        _validate_relative_path(path)
+        if kind != "blob" or mode not in {"100644", "100755", "120000"}:
+            raise RuntimeError(f"unsupported Git entry in snapshot: {path} ({mode})")
+        entries.append((mode, path, object_id))
+    # Read committed blobs directly: archive attributes must not omit or rewrite files.
+    if entries:
+        objects = BytesIO(_git(
+            ["cat-file", "--batch"], source, text=False,
+            input="".join(f"{oid}\n" for _, _, oid in entries).encode("ascii"),
+        ).stdout)
+        for mode, path, object_id in entries:
+            oid, kind, size = objects.readline().decode("ascii").split()
+            if oid != object_id or kind != "blob":
+                raise RuntimeError(f"unexpected Git object for snapshot: {path}")
+            content = objects.read(int(size))
+            if len(content) != int(size) or objects.read(1) != b"\n":
+                raise RuntimeError(f"truncated Git blob for snapshot: {path}")
+            target_path = destination / path
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            if mode == "120000":
+                target = PurePosixPath(os.fsdecode(content))
+                resolved = posixpath.normpath(str(PurePosixPath(path).parent / target))
+                if target.is_absolute() or resolved == ".." or resolved.startswith("../"):
+                    raise RuntimeError(f"Git link escapes snapshot: {path}")
+                target_path.symlink_to(os.fsdecode(content))
+            else:
+                target_path.write_bytes(content)
+                target_path.chmod(int(mode, 8) & 0o777)
     _git(["init", "--quiet"], destination)
     _git(["config", "user.name", "Patch Tournament"], destination)
     _git(["config", "user.email", "patch-tournament@example.invalid"], destination)
-    _git(["add", "-A"], destination)
+    _git(["add", "--force", "-A"], destination)
     _git(
         [
             "commit", "--no-gpg-sign", "--allow-empty", "--quiet", "-m",
@@ -96,13 +103,13 @@ def capture_inspection(workspace: Path) -> GitInspection:
     workspace = workspace.resolve()
     _git(["add", "-N", "--all"], workspace)
     names = _git(
-        ["diff", "--name-only", "-z", BASELINE_REF, "--"], workspace
+        ["diff", "--no-renames", "--name-only", "-z", BASELINE_REF, "--"], workspace
     ).stdout.split("\0")
     changed_files = tuple(sorted(line for line in names if line))
     stats = _parse_numstat_z(
-        _git(["diff", "--numstat", "-z", BASELINE_REF, "--"], workspace).stdout
+        _git(["diff", "--no-renames", "--numstat", "-z", BASELINE_REF, "--"], workspace).stdout
     )
-    patch = _git(["diff", "--binary", "--full-index", BASELINE_REF, "--"], workspace).stdout
+    patch = _git(["diff", "--no-renames", "--binary", "--full-index", BASELINE_REF, "--"], workspace).stdout
     return GitInspection(changed_files, stats, patch)
 
 

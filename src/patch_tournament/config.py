@@ -42,6 +42,7 @@ class CheckConfig:
     command: tuple[str, ...]
     baseline: str
     timeout_seconds: int
+    evidence_paths: tuple[str, ...]
 
     @property
     def gating(self) -> bool:
@@ -200,10 +201,20 @@ def load_config(path: Path) -> TournamentConfig:
         baseline = _string(row, "baseline", context)
         if baseline not in {"pass", "fail", "any"}:
             raise ConfigError(f"{context}.baseline must be 'pass', 'fail', or 'any'")
+        evidence_paths = _string_tuple(row.get("evidence_paths"), f"{context}.evidence_paths")
+        if kind != "speculative" and not evidence_paths:
+            raise ConfigError(f"{context}.evidence_paths must name the gating check's files")
+        for evidence_path in evidence_paths:
+            relative = PurePosixPath(evidence_path)
+            if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+                raise ConfigError(f"{context}.evidence_paths must stay inside the grader workspace")
+        evidence_paths = tuple(str(PurePosixPath(path)) for path in evidence_paths)
         checks.append(CheckConfig(
             check_id, kind, _command(row.get("command"), context), baseline,
-            _positive_int(row, "timeout_seconds", context),
+            _positive_int(row, "timeout_seconds", context), evidence_paths,
         ))
+    if not any(check.gating for check in checks):
+        raise ConfigError("at least one non-speculative gating check is required")
 
     raw_overlays = data.get("overlays", [])
     if not isinstance(raw_overlays, list):

@@ -19,6 +19,7 @@ reasoning_effort = "high"
 [[checks]]
 id = "existing-tests"
 kind = "existing"
+evidence_paths = ["test_existing.py"]
 command = ["python3", "-m", "unittest", "test_existing.py"]
 baseline = "pass"
 timeout_seconds = 60
@@ -26,6 +27,7 @@ timeout_seconds = 60
 [[checks]]
 id = "bug-reproduction"
 kind = "approved-hidden"
+evidence_paths = ["test_regression.py"]
 command = ["python3", "-m", "unittest", "test_regression.py"]
 baseline = "fail"
 timeout_seconds = 60

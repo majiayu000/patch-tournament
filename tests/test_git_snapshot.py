@@ -10,6 +10,42 @@ from tests.helpers import init_repo, run
 
 
 class GitSnapshotTests(unittest.TestCase):
+    def test_snapshot_preserves_blobs_modes_links_and_ignored_tracked_files(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            source = root / "source"
+            init_repo(source, {
+                ".gitattributes": "hidden.txt export-ignore\nversion.txt export-subst\n",
+                "hidden.txt": "keep\n", "version.txt": "$Format:%H$\n",
+                "run.sh": "#!/bin/sh\nexit 0\n",
+            })
+            (source / ".gitignore").write_text("hidden.txt\n")
+            (source / "binary.dat").write_bytes(b"\x00\xff\x01")
+            (source / "run.sh").chmod(0o755)
+            (source / "link").symlink_to("hidden.txt")
+            self.assertEqual(run(["git", "add", "-A"], source).returncode, 0)
+            self.assertEqual(run(["git", "commit", "-m", "fixture"], source).returncode, 0)
+            destination = root / "snapshot"
+            create_snapshot(source, "HEAD", destination)
+            self.assertEqual((destination / "hidden.txt").read_text(), "keep\n")
+            self.assertEqual((destination / "version.txt").read_text(), "$Format:%H$\n")
+            self.assertEqual((destination / "binary.dat").read_bytes(), b"\x00\xff\x01")
+            self.assertTrue((destination / "run.sh").stat().st_mode & 0o111)
+            self.assertTrue((destination / "link").is_symlink())
+            self.assertIn("hidden.txt", run(["git", "ls-files"], destination).stdout)
+            self.assertEqual(capture_inspection(destination).changed_files, ())
+
+    def test_snapshot_rejects_links_outside_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            source = root / "source"
+            init_repo(source, {"app.py": "VALUE = 1\n"})
+            (source / "escape").symlink_to("../outside")
+            self.assertEqual(run(["git", "add", "escape"], source).returncode, 0)
+            self.assertEqual(run(["git", "commit", "-m", "link"], source).returncode, 0)
+            with self.assertRaisesRegex(RuntimeError, "link escapes"):
+                create_snapshot(source, "HEAD", root / "snapshot")
+
     def test_snapshot_ignores_inherited_commit_signing(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)

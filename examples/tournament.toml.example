@@ -20,13 +20,15 @@ reasoning_effort = "high"
 [[checks]]
 id = "existing-tests"
 kind = "existing"
-command = ["python3", "-m", "unittest"]
+evidence_paths = ["tests/test_existing.py"] # Include fixtures, helpers and test configuration.
+command = ["python3", "-m", "unittest", "tests.test_existing"]
 baseline = "pass"
 timeout_seconds = 300
 
 [[checks]]
 id = "bug-reproduction"
 kind = "reproduction"
+evidence_paths = ["tests/test_regression.py"]
 command = ["python3", "-m", "unittest", "tests.test_regression"]
 baseline = "fail"
 timeout_seconds = 300

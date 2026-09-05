@@ -1,16 +1,16 @@
 # Design constraints
 
-Status: implemented design boundary for 0.2, 2026-08-30.
+Status: three-candidate primary workflow with a factual Guard companion, 2026-09-05.
 
 ## Purpose
 
-Patch Tournament must not become a universal judge of whether a code change is
-over-designed. A deterministic program can report patch facts and enforce boundaries that
-the user or repository supplied explicitly. It cannot reliably decide whether a new file,
-dependency, abstraction, or number of changed lines is necessary for a particular task.
+Patch Tournament must not become a universal judge of whether one code change is
+over-designed. It compares alternatives, rejecting candidates that fail caller-supplied
+evidence, and ranking only the survivors by patch surface. This is a relative
+selection claim, not a semantic verdict that the winner is ideally designed.
 
-The default product is therefore one primary agent plus a factual before/after patch report.
-Multi-agent tournament execution remains an explicitly approved, separate escalation.
+The primary product is an explicitly invoked three-candidate Tournament. Patch Guard remains a
+lower-cost companion that reports task-owned changes without calling another model.
 
 ## J-Space warning case
 
@@ -49,9 +49,9 @@ or operating mode would reproduce it.
    `standard`, or `broad` numbers as truth.
 4. **No false success.** An empty diff, incomplete inspection, or failed command is reported
    as its exact state. It is not converted into `pass` or `complete`.
-5. **One default path.** The supported default remains snapshot, primary-agent work,
-   repository verification, and factual diff review. Additional modes require a demonstrated
-   use case and an end-to-end test before they enter the public interface.
+5. **One primary path.** The supported primary workflow remains three isolated candidates,
+   fresh graders, independent checks, deterministic selection, and report-only output.
+   Additional modes require a demonstrated use case and an end-to-end test.
 6. **Declaration must reach execution.** Every option, mode, configuration field, and
    suggested action needs a tested runtime consumer. A setting that is only stored, rendered,
    or documented is not a feature.
@@ -61,8 +61,8 @@ or operating mode would reproduce it.
 8. **Agent feedback stays bounded.** Reports describe observations and explicit violations.
    They do not instruct the agent to simplify, refactor, add wrappers, or remove necessary
    behavior merely to satisfy a metric.
-9. **Tournament stays optional.** No automatic escalation, winner application, or additional
-   model call is permitted without the user's authorization.
+9. **Model calls stay explicit.** Starting a Tournament requires a direct user or caller
+   invocation. Stop hooks never launch candidates, and winners are never applied automatically.
 
 ## Consequences implemented in 0.2
 
@@ -79,3 +79,24 @@ The Guard-first draft was reduced accordingly:
   policy surface.
 
 The preferred response to uncertainty is a smaller claim, not a larger framework.
+
+## Current direction
+
+The 0.2 factual Guard remains supported, but it is no longer the repository's primary product
+story. The main workflow is the original three-candidate Tournament because it can compare
+multiple correct implementations without pretending that a fixed line or file budget is a
+universal design rule. Patch Guard remains useful for low-cost attribution and explicit protected
+paths.
+
+## Acceptance evidence integrity
+
+Every gating check declares its workspace-relative `evidence_paths`. The baseline verifies
+that these are regular files, and candidate patches touching them are rejected before grading.
+Overlay destinations are protected as well. At least one gating check is required; speculative
+checks alone cannot establish eligibility. The caller owns the complete list of test scripts,
+fixtures, helpers, and configuration. This does not sandbox executed code or discover omitted
+dependencies, and a passing report remains subject to semantic review.
+
+Snapshots read committed Git blobs directly instead of using release archives, so export
+attributes cannot omit or substitute task-start files. Renames are represented consistently
+as deletion plus addition in Tournament artifacts and size statistics.

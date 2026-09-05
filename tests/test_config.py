@@ -29,6 +29,7 @@ timeout_seconds = 60
 [[checks]]
 id = "regression"
 kind = "reproduction"
+evidence_paths = ["test_regression.py"]
 command = ["python3", "-m", "unittest"]
 baseline = "fail"
 timeout_seconds = 30
@@ -64,7 +65,14 @@ class ConfigTests(unittest.TestCase):
             self.assertTrue(config.safety.report_only)
 
     def test_speculative_check_can_never_gate_selection(self) -> None:
-        text = VALID_CONFIG.replace('kind = "reproduction"', 'kind = "speculative"')
+        text = VALID_CONFIG + '''
+[[checks]]
+id = "advisory"
+kind = "speculative"
+command = ["python3", "-c", "raise SystemExit(1)"]
+baseline = "any"
+timeout_seconds = 10
+'''
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             (root / "repo").mkdir()
@@ -72,7 +80,22 @@ class ConfigTests(unittest.TestCase):
 
             config = load_config(self.write_config(root, text))
 
-            self.assertFalse(config.checks[0].gating)
+            self.assertTrue(config.checks[0].gating)
+            self.assertFalse(config.checks[1].gating)
+
+    def test_rejects_zero_gates_and_missing_or_escaping_evidence(self) -> None:
+        cases = (
+            (VALID_CONFIG.replace('kind = "reproduction"', 'kind = "speculative"'), "non-speculative"),
+            (VALID_CONFIG.replace('evidence_paths = ["test_regression.py"]', ''), "evidence_paths"),
+            (VALID_CONFIG.replace('test_regression.py', '../outside.py'), "inside"),
+        )
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / "repo").mkdir()
+            (root / "issue.md").write_text("Fix the bug.\n", encoding="utf-8")
+            for text, message in cases:
+                with self.subTest(message=message), self.assertRaisesRegex(ConfigError, message):
+                    load_config(self.write_config(root, text))
 
     def test_rejects_shell_string_commands(self) -> None:
         text = VALID_CONFIG.replace(

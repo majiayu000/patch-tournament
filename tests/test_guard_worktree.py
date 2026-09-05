@@ -15,6 +15,24 @@ from tests.helpers import init_repo, run
 
 
 class GuardWorktreeTests(unittest.TestCase):
+    def test_archive_attributes_do_not_change_task_attribution(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            repo = Path(raw) / "repo"
+            init_repo(repo, {
+                ".gitattributes": "value.py export-ignore\nversion.txt export-subst\n",
+                "value.py": "VALUE = 1\n",
+                "version.txt": "$Format:%H$\n",
+            })
+            clean = create_worktree_snapshot(repo)
+            (repo / "value.py").write_text("VALUE = 2\n")
+            changed = capture_task_inspection(repo, clean)
+            self.assertEqual(changed.statuses, {"value.py": "M"})
+            self.assertEqual(changed.line_stats["value.py"], {"added": 1, "deleted": 1})
+            dirty = create_worktree_snapshot(repo)
+            self.assertEqual(capture_task_inspection(repo, dirty).changed_files, ())
+            (repo / "version.txt").write_text("release\n")
+            self.assertEqual(capture_task_inspection(repo, dirty).line_stats["version.txt"], {"added": 1, "deleted": 1})
+
     def test_task_inspection_preserves_unicode_git_paths(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             repo = Path(raw) / "repo"

@@ -1,27 +1,29 @@
 # Patch Tournament
 
-Patch Tournament gives coding agents an exact answer to a narrow question: **what changed
-during this task?** It records the Git worktree before implementation, compares that state
-with the final worktree, and emits deterministic facts. It does not decide whether a patch is
-well designed, invent a task contract, or call another model.
+Patch Tournament runs three independent coding agents against the same task, verifies every
+patch in a fresh grader workspace, and ranks candidates that pass caller-supplied checks.
+It lets you compare patch scope across alternatives. A smaller passing patch is not proof
+of better design or complete behavioral correctness.
 
-The default workflow is deliberately small:
+The primary workflow is:
 
 ```text
-task-start snapshot -> one coding agent -> project tests -> task-diff facts
+task evidence -> three isolated candidates -> independent checks -> smallest passing patch
 ```
 
-This design and the J-Space failure pattern that motivated it are documented in
+The included Patch Guard remains available as a lower-cost companion when only task-level diff
+attribution is needed. Neither mode can replace project tests or semantic review. The design
+boundaries are documented in
 [`DESIGN.md`](https://github.com/majiayu000/patch-tournament/blob/main/DESIGN.md).
 
 ## Install
 
 Patch Tournament requires Python 3.11+ and Git. Install the CLI in an isolated tool
-environment with `uv` or `pipx`:
+environment from the repository with `uv` or `pipx`:
 
 ```bash
-uv tool install patch-tournament
-# or: pipx install patch-tournament
+uv tool install 'git+https://github.com/majiayu000/patch-tournament.git'
+# or: pipx install 'git+https://github.com/majiayu000/patch-tournament.git'
 ```
 
 Verify the installation:
@@ -30,7 +32,48 @@ Verify the installation:
 patch-tournament --version
 ```
 
-## Agent workflow
+## Three-agent workflow
+
+Start from the provided configuration:
+
+```bash
+cp examples/tournament.toml.example tournament.toml
+```
+
+Set the repository, task evidence, and project-owned checks in `tournament.toml`, then run:
+
+```bash
+patch-tournament run --config tournament.toml --output /tmp/tournament-result
+```
+
+The example already uses three concurrent Codex candidates. Grader overlays are not copied
+into candidate workspaces. Tournament applies each patch to a fresh grader, rejects candidates
+that fail gating checks, and writes `report.json`, `report.md`, every candidate patch, and
+`winner.patch`. It never applies the winner automatically.
+
+Every gating check (`existing`, `reproduction`, or `approved-hidden`) must declare non-empty
+`evidence_paths`: exact, workspace-relative file paths for its test scripts, fixtures, helpers,
+and test configuration. They must exist in the selected Git revision or be supplied by an
+overlay. Symlinked evidence is rejected. Candidates that change these files are ineligible.
+For example:
+
+```toml
+[[checks]]
+id = "regression"
+kind = "reproduction"
+command = ["python3", "-B", "tests/test_regression.py"]
+evidence_paths = ["tests/test_regression.py", "tests/helpers.py"]
+baseline = "fail"
+timeout_seconds = 60
+```
+
+Include every file controlling the check; the tool does not infer command dependencies.
+Use fixed test modules for gates: discovery commands can also collect candidate-authored
+tests, so they do not isolate your original acceptance set.
+At least one gating check is required. Speculative-only configurations are errors.
+This is a breaking configuration change from 0.2.0.
+
+## Lightweight Patch Guard workflow
 
 Create a snapshot before the agent edits anything. Store it outside the worktree or under
 `.git/` so the snapshot file itself cannot appear in the task diff.
@@ -88,7 +131,7 @@ proves scope. The attribution evidence no longer exists.
 
 ## Install the Codex plugin
 
-The PyPI package installs the CLI. To let Codex record the task baseline and report the
+The Python package installs the CLI. To let Codex record the task baseline and report the
 task-owned diff automatically, install the repository's `patch-guard` plugin:
 
 ```bash
@@ -100,25 +143,19 @@ Start a new Codex session after installation. The plugin runs automatically for 
 you do not need to invoke `$patch-guard`. Do not keep the older manually linked `patch-guard`
 skill enabled at the same time, because that would duplicate the workflow.
 
-## Optional tournament mode
+## Why three candidates
 
-The original multi-agent tournament remains an explicit, costly tool for evaluations or
-cases where the user asks to compare independent candidates:
-
-```bash
-cp examples/tournament.toml.example tournament.toml
-patch-tournament run --config tournament.toml --output /tmp/tournament-result
-```
-
-It runs candidates in isolated Git snapshots, applies their patches to fresh grader
-snapshots, gates them using independently supplied checks, and reports the smallest passing
-candidate. It never auto-applies the winner. Existing, reproduction, and approved-hidden
-checks may gate selection; agent-authored speculative checks may not.
-
-Tournament mode spends additional tokens and is never launched automatically by Patch
-Guard. See
+Three candidates are the example configuration, not an empirically established optimum.
+Acceptance comes from caller-supplied checks; size only ranks candidates that already passed.
+Ranking prefers fewer dependency manifest changes, then fewer production files, fewer
+production changed lines, fewer total files, and fewer total changed lines, in that order.
+It is not a semantic complexity score. Existing, reproduction, and approved-hidden checks may gate
+selection, while agent-authored speculative checks may not. See
 [`examples/tournament.toml.example`](https://github.com/majiayu000/patch-tournament/blob/main/examples/tournament.toml.example)
-for its configuration.
+for the complete configuration.
+
+The [recorded historical-task comparison](PROJECT_STATUS.md) includes correctness checks,
+patch review, token usage, and elapsed time. It does not establish a general cost or quality win.
 
 ## Limits and safety
 
@@ -127,9 +164,19 @@ for its configuration.
 - A protected glob is caller policy, not an inferred semantic rule.
 - Commands are executed as argument arrays rather than shell strings.
 - The generic tournament command adapter is not an OS sandbox; run only trusted executables.
+- Workspaces share the host and inherit its environment. Hidden evidence is not a security
+  boundary against a process that can read the host filesystem. Declare all verifier inputs;
+  evidence-path protection does not sandbox candidate code executed during a check.
 - Checks and candidate code may execute repository code and should be treated like a normal
   build job.
-- Binary changes are reported with incomplete text-line counts rather than fake numbers.
+- Guard reports incomplete text-line counts for binary files. Tournament currently assigns
+  each unknown added/deleted line count a ranking penalty of 1,000,000.
+- Python candidates receive `PYTHONDONTWRITEBYTECODE=1`; explicit bytecode compilation and
+  other build outputs still need project-owned ignore rules.
+- Snapshots preserve committed blobs, including `export-ignore` and `export-subst` files.
+  Submodules and links escaping the snapshot are rejected explicitly.
+- Guard measures changes between two instants; concurrent writers in the same worktree
+  cannot be distinguished. Snapshot JSON includes uncommitted file contents; store it privately.
 
 Run the test suite with:
 
