@@ -22,15 +22,46 @@ def link_target_escapes(path: str, target: str | bytes) -> bool:
     return link.is_absolute() or resolved == ".." or resolved.startswith("../")
 
 
+def _index_symlink_target(workspace: Path, path: str) -> str | None:
+    """Return a non-empty symlink target from the Git index for ``path``, if any.
+
+    Intent-to-add (``git add -N``) records mode ``120000`` with an empty blob; those
+    are ignored so callers can fall back to the worktree/patch content.
+    """
+    try:
+        staged = _git(["ls-files", "--stage", "--", path], workspace).stdout.strip()
+    except RuntimeError:
+        return None
+    if not staged:
+        return None
+    metadata, _staged_path = staged.splitlines()[0].split("\t", 1)
+    mode, object_id, _stage = metadata.split()
+    if mode != "120000":
+        return None
+    content = _git(["cat-file", "blob", object_id], workspace, text=False).stdout
+    if not content:
+        return None
+    return os.fsdecode(content)
+
+
 def escaping_symlinks(workspace: Path, changed_files: Sequence[str]) -> tuple[str, ...]:
-    """Return changed paths that are symlinks whose targets escape ``workspace``."""
+    """Return changed paths that are symlinks whose targets escape ``workspace``.
+
+    Prefer the symlink blob stored in the Git index (what ``capture_inspection`` /
+    ``winner.patch`` emit) over ``os.readlink`` on the worktree. Staging an escaping
+    link, replacing the worktree entry with a safe target, and marking
+    ``--assume-unchanged`` must still be detected.
+    """
     workspace = workspace.resolve()
     escapes: list[str] = []
     for path in changed_files:
-        entry = workspace / path
-        if not entry.is_symlink():
-            continue
-        if link_target_escapes(path, os.readlink(entry)):
+        target = _index_symlink_target(workspace, path)
+        if target is None:
+            entry = workspace / path
+            if not entry.is_symlink():
+                continue
+            target = os.readlink(entry)
+        if link_target_escapes(path, target):
             escapes.append(path)
     return tuple(escapes)
 
