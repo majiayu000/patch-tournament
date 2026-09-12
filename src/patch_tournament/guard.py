@@ -36,7 +36,17 @@ class GuardResult:
 
 
 def _matches(path: str, patterns: Sequence[str]) -> bool:
-    return any(path == pattern or fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
+    """True when path equals a pattern, matches it as fnmatch/glob, or falls under a dir prefix.
+
+    Trailing-slash patterns are directory prefixes: ``secret/`` covers ``secret`` and
+    ``secret/key.txt``. Glob patterns such as ``.github/**`` use ``fnmatch``.
+    """
+    for pattern in patterns:
+        if path == pattern or fnmatch.fnmatchcase(path, pattern):
+            return True
+        if pattern.endswith("/") and (path == pattern[:-1] or path.startswith(pattern)):
+            return True
+    return False
 
 
 def evaluate_guard(

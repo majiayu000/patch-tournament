@@ -57,6 +57,16 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(result.violations[0].code, "protected_path_changed")
         self.assertEqual(result.violations[0].paths, (".github/workflows/release.yml",))
 
+    def test_directory_prefix_protected_path_creates_a_violation(self) -> None:
+        result = evaluate_guard(
+            inspection(("src/app.py", "secret/key.txt")),
+            protected_paths=("secret/",),
+        )
+
+        self.assertEqual(result.status, "constraint_violation")
+        self.assertEqual(result.violations[0].code, "protected_path_changed")
+        self.assertEqual(result.violations[0].paths, ("secret/key.txt",))
+
     def test_large_patch_remains_an_observation_without_an_explicit_constraint(self) -> None:
         files = tuple(f"src/module_{index}.py" for index in range(20))
 

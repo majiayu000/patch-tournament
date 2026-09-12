@@ -10,6 +10,7 @@ from pathlib import Path
 from .adapters import build_candidate_invocation, build_task_prompt, prepare_codex_home
 from .config import CheckConfig, TournamentConfig, load_config
 from .git_snapshot import GitInspection, apply_patch_text, capture_inspection, create_snapshot
+from .guard import _matches
 from .process import CommandResult, run_command
 from .selection import CandidateEvaluation, PatchMetrics, inspect_metrics, select_winner
 
@@ -156,9 +157,13 @@ def _run_candidate(
     protected = set(config.safety.protected_paths)
     protected.update(path for check in config.checks if check.gating for path in check.evidence_paths)
     protected.update(str(overlay.destination) for overlay in config.overlays)
+    protected_patterns = tuple(protected)
+    # Match Guard semantics (exact / fnmatch / trailing-slash dir prefix), and keep the
+    # parent-replacement check so overlay/evidence symlink attacks stay blocked.
     touched_protected = sorted(
         path for path in inspection.changed_files
-        if any(boundary == path or boundary.startswith(path + "/") for boundary in protected)
+        if _matches(path, protected_patterns)
+        or any(boundary.startswith(path + "/") for boundary in protected)
     )
     failures.extend(f"protected_path:{path}" for path in touched_protected)
 

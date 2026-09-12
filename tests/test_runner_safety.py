@@ -92,6 +92,57 @@ class RunnerSafetyTests(unittest.TestCase):
             self.assertIn("protected_path:pyproject.toml", report["candidates"]["c01"]["failures"])
             self.assertFalse((root / "output" / "winner.patch").exists())
 
+    def test_directory_prefix_protected_path_produces_no_winner(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            config = write_fixture(root)
+            config.write_text(config.read_text(encoding="utf-8").replace(
+                'protected_paths=["pyproject.toml"]',
+                'protected_paths=["secret/"]',
+            ), encoding="utf-8")
+            repo = root / "repo"
+            (repo / "agent.py").write_text(
+                "from pathlib import Path\n"
+                "Path('secret').mkdir(exist_ok=True)\n"
+                "Path('secret/key.txt').write_text('leak')\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(run(["git", "add", "agent.py"], repo).returncode, 0)
+            self.assertEqual(run(["git", "commit", "-m", "candidate fixture"], repo).returncode, 0)
+            result = run_tournament(config, root / "output")
+            report = json.loads(result.report_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(result.status, "no_winner")
+            self.assertIn("protected_path:secret/key.txt", report["candidates"]["c01"]["failures"])
+            self.assertFalse((root / "output" / "winner.patch").exists())
+
+    def test_glob_protected_path_produces_no_winner(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            config = write_fixture(root)
+            config.write_text(config.read_text(encoding="utf-8").replace(
+                'protected_paths=["pyproject.toml"]',
+                'protected_paths=[".github/**"]',
+            ), encoding="utf-8")
+            repo = root / "repo"
+            (repo / "agent.py").write_text(
+                "from pathlib import Path\n"
+                "Path('.github/workflows').mkdir(parents=True, exist_ok=True)\n"
+                "Path('.github/workflows/ci.yml').write_text('name: leak\\n')\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(run(["git", "add", "agent.py"], repo).returncode, 0)
+            self.assertEqual(run(["git", "commit", "-m", "candidate fixture"], repo).returncode, 0)
+            result = run_tournament(config, root / "output")
+            report = json.loads(result.report_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(result.status, "no_winner")
+            self.assertIn(
+                "protected_path:.github/workflows/ci.yml",
+                report["candidates"]["c01"]["failures"],
+            )
+            self.assertFalse((root / "output" / "winner.patch").exists())
+
     def test_baseline_mismatch_aborts_before_writing_output(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
