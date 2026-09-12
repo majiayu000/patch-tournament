@@ -5,6 +5,7 @@ import os
 import posixpath
 import subprocess
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
@@ -12,6 +13,26 @@ from pathlib import PurePosixPath
 
 
 BASELINE_REF = "refs/patch-tournament/baseline"
+
+
+def link_target_escapes(path: str, target: str | bytes) -> bool:
+    """Return True if a symlink at ``path`` points outside the workspace root."""
+    link = PurePosixPath(os.fsdecode(target) if isinstance(target, bytes) else target)
+    resolved = posixpath.normpath(str(PurePosixPath(path).parent / link))
+    return link.is_absolute() or resolved == ".." or resolved.startswith("../")
+
+
+def escaping_symlinks(workspace: Path, changed_files: Sequence[str]) -> tuple[str, ...]:
+    """Return changed paths that are symlinks whose targets escape ``workspace``."""
+    workspace = workspace.resolve()
+    escapes: list[str] = []
+    for path in changed_files:
+        entry = workspace / path
+        if not entry.is_symlink():
+            continue
+        if link_target_escapes(path, os.readlink(entry)):
+            escapes.append(path)
+    return tuple(escapes)
 
 
 @dataclass(frozen=True)
@@ -75,9 +96,7 @@ def create_snapshot(source: Path, ref: str, destination: Path) -> str:
             target_path = destination / path
             target_path.parent.mkdir(parents=True, exist_ok=True)
             if mode == "120000":
-                target = PurePosixPath(os.fsdecode(content))
-                resolved = posixpath.normpath(str(PurePosixPath(path).parent / target))
-                if target.is_absolute() or resolved == ".." or resolved.startswith("../"):
+                if link_target_escapes(path, content):
                     raise RuntimeError(f"Git link escapes snapshot: {path}")
                 target_path.symlink_to(os.fsdecode(content))
             else:

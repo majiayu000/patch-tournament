@@ -9,7 +9,13 @@ from pathlib import Path
 
 from .adapters import build_candidate_invocation, build_task_prompt, prepare_codex_home
 from .config import CheckConfig, TournamentConfig, load_config
-from .git_snapshot import GitInspection, apply_patch_text, capture_inspection, create_snapshot
+from .git_snapshot import (
+    GitInspection,
+    apply_patch_text,
+    capture_inspection,
+    create_snapshot,
+    escaping_symlinks,
+)
 from .process import CommandResult, run_command
 from .selection import CandidateEvaluation, PatchMetrics, inspect_metrics, select_winner
 
@@ -161,6 +167,10 @@ def _run_candidate(
         if any(boundary == path or boundary.startswith(path + "/") for boundary in protected)
     )
     failures.extend(f"protected_path:{path}" for path in touched_protected)
+    failures.extend(
+        f"escaping_symlink:{path}"
+        for path in escaping_symlinks(workspace, inspection.changed_files)
+    )
 
     checks: tuple[CheckExecution, ...] = ()
     if not failures:

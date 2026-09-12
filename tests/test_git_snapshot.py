@@ -5,11 +5,37 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from patch_tournament.git_snapshot import capture_inspection, create_snapshot
+from patch_tournament.git_snapshot import (
+    capture_inspection,
+    create_snapshot,
+    escaping_symlinks,
+    link_target_escapes,
+)
 from tests.helpers import init_repo, run
 
 
 class GitSnapshotTests(unittest.TestCase):
+    def test_link_target_escapes_matches_snapshot_policy(self) -> None:
+        self.assertTrue(link_target_escapes("evil", "/tmp/outside"))
+        self.assertTrue(link_target_escapes("evil", "../outside"))
+        self.assertTrue(link_target_escapes("nested/evil", "../../outside"))
+        self.assertFalse(link_target_escapes("evil", "sibling.txt"))
+        self.assertFalse(link_target_escapes("nested/evil", "../sibling.txt"))
+
+    def test_escaping_symlinks_detects_workspace_links(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            (workspace / "ok").symlink_to("value.py")
+            (workspace / "escape").symlink_to("../outside")
+            (workspace / "abs").symlink_to("/tmp/patch-tournament-evil-target")
+            (workspace / "value.py").write_text("VALUE = 2\n", encoding="utf-8")
+
+            found = escaping_symlinks(workspace, ("ok", "escape", "abs", "value.py", "missing"))
+
+            self.assertEqual(found, ("escape", "abs"))
+
     def test_snapshot_preserves_blobs_modes_links_and_ignored_tracked_files(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)

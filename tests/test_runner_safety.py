@@ -92,6 +92,36 @@ class RunnerSafetyTests(unittest.TestCase):
             self.assertIn("protected_path:pyproject.toml", report["candidates"]["c01"]["failures"])
             self.assertFalse((root / "output" / "winner.patch").exists())
 
+    def test_escaping_symlink_candidate_produces_no_winner(self) -> None:
+        cases = (
+            ("/tmp/patch-tournament-evil-target", "evil-abs"),
+            ("../outside", "evil-rel"),
+        )
+        for target, link_name in cases:
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as raw:
+                root = Path(raw)
+                config = write_fixture(root)
+                repo = root / "repo"
+                (repo / "agent.py").write_text(
+                    "from pathlib import Path\n"
+                    "Path('value.py').write_text('VALUE = 2\\n')\n"
+                    f"Path({link_name!r}).symlink_to({target!r})\n",
+                    encoding="utf-8",
+                )
+                self.assertEqual(run(["git", "add", "agent.py"], repo).returncode, 0)
+                self.assertEqual(
+                    run(["git", "commit", "-m", "escaping symlink fixture"], repo).returncode, 0
+                )
+
+                result = run_tournament(config, root / "output")
+                report = json.loads(result.report_path.read_text(encoding="utf-8"))
+                failures = report["candidates"]["c01"]["failures"]
+
+                self.assertEqual(result.status, "no_winner")
+                self.assertIn(f"escaping_symlink:{link_name}", failures)
+                self.assertEqual(report["candidates"]["c01"]["status"], "ineligible")
+                self.assertFalse((root / "output" / "winner.patch").exists())
+
     def test_baseline_mismatch_aborts_before_writing_output(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
