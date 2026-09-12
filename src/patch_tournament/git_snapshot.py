@@ -5,6 +5,7 @@ import os
 import posixpath
 import subprocess
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
@@ -12,6 +13,57 @@ from pathlib import PurePosixPath
 
 
 BASELINE_REF = "refs/patch-tournament/baseline"
+
+
+def link_target_escapes(path: str, target: str | bytes) -> bool:
+    """Return True if a symlink at ``path`` points outside the workspace root."""
+    link = PurePosixPath(os.fsdecode(target) if isinstance(target, bytes) else target)
+    resolved = posixpath.normpath(str(PurePosixPath(path).parent / link))
+    return link.is_absolute() or resolved == ".." or resolved.startswith("../")
+
+
+def _index_symlink_target(workspace: Path, path: str) -> str | None:
+    """Return a non-empty symlink target from the Git index for ``path``, if any.
+
+    Intent-to-add (``git add -N``) records mode ``120000`` with an empty blob; those
+    are ignored so callers can fall back to the worktree/patch content.
+    """
+    try:
+        staged = _git(["ls-files", "--stage", "--", path], workspace).stdout.strip()
+    except RuntimeError:
+        return None
+    if not staged:
+        return None
+    metadata, _staged_path = staged.splitlines()[0].split("\t", 1)
+    mode, object_id, _stage = metadata.split()
+    if mode != "120000":
+        return None
+    content = _git(["cat-file", "blob", object_id], workspace, text=False).stdout
+    if not content:
+        return None
+    return os.fsdecode(content)
+
+
+def escaping_symlinks(workspace: Path, changed_files: Sequence[str]) -> tuple[str, ...]:
+    """Return changed paths that are symlinks whose targets escape ``workspace``.
+
+    Prefer the symlink blob stored in the Git index (what ``capture_inspection`` /
+    ``winner.patch`` emit) over ``os.readlink`` on the worktree. Staging an escaping
+    link, replacing the worktree entry with a safe target, and marking
+    ``--assume-unchanged`` must still be detected.
+    """
+    workspace = workspace.resolve()
+    escapes: list[str] = []
+    for path in changed_files:
+        target = _index_symlink_target(workspace, path)
+        if target is None:
+            entry = workspace / path
+            if not entry.is_symlink():
+                continue
+            target = os.readlink(entry)
+        if link_target_escapes(path, target):
+            escapes.append(path)
+    return tuple(escapes)
 
 
 @dataclass(frozen=True)
@@ -75,9 +127,7 @@ def create_snapshot(source: Path, ref: str, destination: Path) -> str:
             target_path = destination / path
             target_path.parent.mkdir(parents=True, exist_ok=True)
             if mode == "120000":
-                target = PurePosixPath(os.fsdecode(content))
-                resolved = posixpath.normpath(str(PurePosixPath(path).parent / target))
-                if target.is_absolute() or resolved == ".." or resolved.startswith("../"):
+                if link_target_escapes(path, content):
                     raise RuntimeError(f"Git link escapes snapshot: {path}")
                 target_path.symlink_to(os.fsdecode(content))
             else:
