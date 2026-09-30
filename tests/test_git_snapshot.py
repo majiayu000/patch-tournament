@@ -22,6 +22,12 @@ class GitSnapshotTests(unittest.TestCase):
         self.assertFalse(link_target_escapes("evil", "sibling.txt"))
         self.assertFalse(link_target_escapes("nested/evil", "../sibling.txt"))
 
+    def test_link_target_escapes_rejects_nul_targets(self) -> None:
+        for target in ("..\x00/etc/passwd", "/\x00inside", "value.py\x00suffix", "\x00inside"):
+            for value in (target, target.encode()):
+                with self.subTest(target=value):
+                    self.assertTrue(link_target_escapes("evil", value))
+
     def test_escaping_symlinks_detects_workspace_links(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)

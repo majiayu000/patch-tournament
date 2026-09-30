@@ -152,6 +152,43 @@ class RunnerSafetyTests(unittest.TestCase):
             self.assertEqual(report["candidates"]["c01"]["status"], "ineligible")
             self.assertFalse((root / "output" / "winner.patch").exists())
 
+    def test_nul_truncated_symlink_still_produces_no_winner(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            config = write_fixture(root)
+            repo = root / "repo"
+            (repo / "agent.py").write_text(
+                "import subprocess\n"
+                "from pathlib import Path\n"
+                "Path('value.py').write_text('VALUE = 2\\n')\n"
+                "Path('evil').symlink_to('value.py')\n"
+                "blob = subprocess.run(['git', 'hash-object', '-w', '--stdin'], "
+                "input=b'..\\x00/etc/passwd', capture_output=True, check=True).stdout.decode().strip()\n"
+                "subprocess.run(['git', 'update-index', '--add', '--cacheinfo', "
+                "'120000', blob, 'evil'], check=True)\n"
+                "subprocess.run(['git', 'update-index', '--assume-unchanged', 'evil'], check=True)\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(run(["git", "add", "agent.py"], repo).returncode, 0)
+            self.assertEqual(
+                run(["git", "commit", "-m", "NUL symlink fixture"], repo).returncode, 0
+            )
+
+            result = run_tournament(config, root / "output")
+            report = json.loads(result.report_path.read_text(encoding="utf-8"))
+            candidate = report["candidates"]["c01"]
+            patch = (root / "output" / "candidates" / "c01.patch").read_text(encoding="utf-8")
+
+            self.assertEqual(candidate["generation"]["status"], "passed")
+            self.assertIn("evil", candidate["changed_files"])
+            self.assertIn("new file mode 120000", patch)
+            self.assertIn("GIT binary patch", patch)
+            self.assertEqual(result.status, "no_winner")
+            self.assertIn("escaping_symlink:evil", candidate["failures"])
+            self.assertEqual(candidate["status"], "ineligible")
+            self.assertEqual(candidate["checks"], [])
+            self.assertFalse((root / "output" / "winner.patch").exists())
+
     def test_baseline_mismatch_aborts_before_writing_output(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
