@@ -16,6 +16,21 @@ attribution is needed. Neither mode can replace project tests or semantic review
 boundaries are documented in
 [`DESIGN.md`](https://github.com/majiayu000/patch-tournament/blob/main/DESIGN.md).
 
+## Choose a workflow
+
+| Need | Workflow | Read next |
+| --- | --- | --- |
+| Measure edits made after a task starts | Snapshot, then Patch Guard | [Why the snapshot matters](#why-the-start-snapshot-matters) |
+| Compare candidate fixes against your acceptance evidence | Tournament with isolated candidates and independent graders | [Three-agent configuration](#three-agent-workflow) |
+| Evaluate predictions on SWE-bench datasets | Use the [SWE-bench evaluation harness](https://www.swebench.com/SWE-bench/guides/evaluation/) | Separate dataset/container workflow; not built into this CLI |
+
+Tournament acceptance is limited to your declared checks. Guard measures scope;
+it does not run a correctness competition. Neither produces a universal quality score.
+
+[Recorded comparison](PROJECT_STATUS.md) · [Design](DESIGN.md) ·
+[Releases](https://github.com/majiayu000/patch-tournament/releases) ·
+[Report a problem](https://github.com/majiayu000/patch-tournament/issues) · [MIT license](LICENSE)
+
 ## Install
 
 Patch Tournament requires Python 3.11+ and Git. Install the CLI in an isolated tool
@@ -77,6 +92,18 @@ Use fixed test modules for gates: discovery commands can also collect candidate-
 tests, so they do not isolate your original acceptance set.
 At least one gating check is required. Speculative-only configurations are errors.
 This is a breaking configuration change from 0.2.0.
+
+## Review a tournament result
+
+1. Open `report.md` or `report.json` and inspect each candidate's check outcomes.
+   A process error or an ineligible candidate is not a passing alternative.
+2. Read the candidate patches and `winner.patch` against the original task and
+   evidence. Size ranks passing patches; it cannot establish semantic correctness.
+3. Review the chosen patch before applying it, then run the receiving repository's
+   own checks. The CLI does not apply a winner automatically.
+
+For a behavior or ranking question, include the configuration, report and a small
+reproduction in an issue, with host paths and private task content removed.
 
 ## Lightweight Patch Guard workflow
 
