@@ -16,8 +16,12 @@ BASELINE_REF = "refs/patch-tournament/baseline"
 
 
 def link_target_escapes(path: str, target: str | bytes) -> bool:
-    """Return True if a symlink at ``path`` points outside the workspace root."""
-    link = PurePosixPath(os.fsdecode(target) if isinstance(target, bytes) else target)
+    """Return True if a symlink target is invalid or escapes the workspace root."""
+    target = os.fsdecode(target) if isinstance(target, bytes) else target
+    # Git can store NUL bytes, but git apply creates only the target's prefix.
+    if "\0" in target:
+        return True
+    link = PurePosixPath(target)
     resolved = posixpath.normpath(str(PurePosixPath(path).parent / link))
     return link.is_absolute() or resolved == ".." or resolved.startswith("../")
 
